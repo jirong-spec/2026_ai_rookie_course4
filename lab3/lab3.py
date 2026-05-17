@@ -1,6 +1,7 @@
 # lab3_data_cleaning.py
 import json
 import random
+import hashlib
 import re
 import unicodedata
 from urllib import response
@@ -22,17 +23,17 @@ except Exception:
         return s
 
 BADWORDS = ("垃圾", "白癡", "去死")  # 示意
+DEFAULT_SYSTEM = "你是專業客服助理，請用繁體中文，語氣禮貌、清楚且具體。"
+
 
 def normalize_text(s: str) -> str:
-    # TODO 1: 實作基礎清洗流程
-    # 1) 簡轉繁
-    # 2) Unicode 正規化
-    # 3) 去掉多餘空白
+    s = to_trad(s)
+    s = unicodedata.normalize("NFKC", s)
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 def is_toxic(s: str) -> bool:
-    # TODO 2: 如字串含 BADWORDS 中的任何詞就視為 toxic
-    return False
+    return any(bad in s for bad in BADWORDS)
 
 def call_llm(messages):
     data = {
@@ -71,10 +72,18 @@ def build_synthetic_examples(n: int = 60) -> List[Dict[str, Any]]:
     ]
 
     def synth_assistant(topic: str, user: str) -> str:
-        
-        system_prompt = """"""
-        # TODO 3: 回傳一個固定但看起來合理的客服回答（繁體中文）
-        return "..."
+        templates = {
+            "查詢出貨": "您好，已收到您的需求。請提供訂單編號與收件資訊，我們會協助您確認目前出貨進度，並回覆預計配送時間。",
+            "退貨流程": "您好，若您需要辦理退貨，請先確認商品仍在退貨期限內且包裝完整，接著提供訂單資訊與退貨原因，我們將協助您安排後續流程。",
+            "退款時程": "您好，退款時間通常會依付款方式而有所不同。一般在確認退貨或取消成功後，約需數個工作天入帳，我們也會同步通知您。",
+            "修改地址": "您好，若訂單尚未出貨，通常可以協助修改收件地址。請提供訂單編號與正確地址，我們會盡快為您確認。",
+            "維修保固": "您好，產品是否適用保固需依品項與購買時間判定。請提供訂單編號、商品名稱與問題描述，我們會協助您確認送修方式。",
+            "發票補發": "您好，可以協助您申請發票補發。請提供訂單資訊與需求說明，我們會確認處理方式後回覆您。",
+        }
+        return templates.get(
+            topic,
+            f"您好，關於「{topic}」的問題，我們已收到您的需求。請提供相關訂單或商品資訊，我們會盡快協助您處理。"
+        )
 
     data = []
     for i in tqdm(range(n)):
@@ -83,6 +92,9 @@ def build_synthetic_examples(n: int = 60) -> List[Dict[str, Any]]:
         assistant = synth_assistant(topic, user)
 
         messages = [
+            {"role": "system", "content": DEFAULT_SYSTEM},
+            {"role": "user", "content": user},
+            {"role": "assistant", "content": assistant},
         ]
         data.append(
             {
@@ -110,22 +122,53 @@ def clean_dataset(
     seen_keys = set()
 
     for ex in examples:
-        # TODO 6: 遍歷 messages，做 normalize_text & is_toxic 檢查
-        # 若發現毒性，整筆丟棄
+        toxic_found = False
         messages = []
 
-        # TODO 7: 計算所有 user content 的總長度，過短/過長丟棄
-        # user_concat = ...
+        for msg in ex.get("messages", []):
+            role = msg.get("role", "")
+            content = normalize_text(str(msg.get("content", "")))
 
-        # TODO 8: 用 chat_template 估 token 長度，超過 max_total_tokens 丟棄
-        # chat_tokens = ...
+            if not content:
+                continue
 
-        # TODO 9: 用 user_concat 做 hash，做去重
-        # key = hashlib.md5(user_concat.encode("utf-8")).hexdigest()
-        # 若 key 已存在於 seen_keys 則跳過
+            if is_toxic(content):
+                toxic_found = True
+                break
 
-        # 否則加入 cleaned
-        cleaned.append(ex)
+            messages.append({"role": role, "content": content})
+
+        if toxic_found or not messages:
+            continue
+
+        user_concat = " ".join(
+            msg["content"] for msg in messages if msg.get("role") == "user"
+        ).strip()
+
+        if len(user_concat) < 3 or len(user_concat) > max_user_len:
+            continue
+
+        try:
+            chat_ids = tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=False,
+            )
+            chat_tokens = len(chat_ids)
+        except Exception:
+            continue
+
+        if chat_tokens > max_total_tokens:
+            continue
+
+        key = hashlib.md5(user_concat.encode("utf-8")).hexdigest()
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        new_ex = dict(ex)
+        new_ex["messages"] = messages
+        cleaned.append(new_ex)
 
     return cleaned
 

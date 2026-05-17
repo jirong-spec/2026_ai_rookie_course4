@@ -48,13 +48,21 @@ def token_count_report(models: List[str], texts: Dict[str, str]) -> Dict:
 
         # TODO 1-2: 對每個樣本文本計算 raw_tokens / chat_tokens
         for name, text in texts.items():
-            # raw_tokens = len(tok.encode(text))
-            raw_tokens = None
+            raw_tokens = len(tok.encode(text))
+         
 
             # chat_tokens: 需要組成 messages 後，用 apply_chat_template
-            # messages = [{"role": "system", "content": "..."},
-            #             {"role": "user", "content": text}]
-            chat_tokens = None
+            messages = [{"role": "system", "content": "..."},
+                        {"role": "user", "content": text}]
+            try:
+                chat_ids = tok.apply_chat_template(
+                    messages,
+                    tokenize=True,
+                    add_generation_prompt=False,
+                )
+                chat_tokens = len(chat_ids)
+            except Exception:
+                chat_tokens = None
 
             model_result[name] = {
                 "raw_tokens": raw_tokens,
@@ -82,13 +90,13 @@ def estimate_training_budget(
     }
     """
     # TODO 2: 計算 total_tokens = num_samples * (avg_prompt_tokens + avg_resp_tokens) * epochs
-    total_tokens = None
+    total_tokens = num_samples * (avg_prompt_tokens + avg_resp_tokens) * epochs
 
     # TODO 3: 計算 train_seconds = total_tokens / tokens_per_sec
-    train_seconds = None
+    train_seconds = total_tokens / tokens_per_sec
 
     # TODO 4: train_hours = train_seconds / 3600
-    train_hours = None
+    train_hours = train_seconds / 3600
 
     return {
         "total_tokens": total_tokens,

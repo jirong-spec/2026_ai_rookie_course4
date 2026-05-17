@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM 指令微調完整流程 — Course 4</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Slide container ── */
+.deck { width: 100vw; height: 100vh; position: relative; }
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 80px;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.slide.active { display: flex; opacity: 1; }
+
+/* ── Navigation ── */
+.nav {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 100;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px);
+  padding: 10px 20px;
+  border-radius: 40px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.nav button {
+  background: none;
+  border: none;
+  color: #ccc;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: background 0.2s, color 0.2s;
+}
+.nav button:hover { background: rgba(255,255,255,0.12); color: white; }
+#slide-counter { font-size: 0.8rem; color: #888; min-width: 60px; text-align: center; }
+
+/* Keyboard hint */
+.hint {
+  position: fixed;
+  bottom: 28px;
+  right: 32px;
+  font-size: 0.7rem;
+  color: #444;
+}
+
+/* ── Progress bar ── */
+.progress {
+  position: fixed;
+  top: 0; left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+  transition: width 0.35s ease;
+  z-index: 200;
+}
+
+/* ── Slide number badge ── */
+.slide-num {
+  position: fixed;
+  top: 20px; right: 28px;
+  font-size: 0.72rem;
+  color: #444;
+}
+
+/* ═══════════════════════════════════
+   SLIDE THEMES
+═══════════════════════════════════ */
+
+/* Cover */
+.slide-cover { background: radial-gradient(ellipse at 30% 50%, #1a2744 0%, #0d1117 70%); }
+.slide-cover .eyebrow { font-size: 0.9rem; color: #58a6ff; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 20px; }
+.slide-cover h1 { font-size: 3.2rem; font-weight: 800; line-height: 1.2; max-width: 700px; text-align: center; }
+.slide-cover h1 span { color: #58a6ff; }
+.slide-cover .subtitle { margin-top: 24px; color: #8b949e; font-size: 1rem; text-align: center; }
+.slide-cover .tags { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 28px; }
+.slide-cover .tags span { background: rgba(88,166,255,0.12); border: 1px solid rgba(88,166,255,0.25); color: #58a6ff; padding: 5px 14px; border-radius: 20px; font-size: 0.8rem; }
+
+/* Section divider */
+.slide-section { background: linear-gradient(135deg, #161b22 0%, #0d1117 100%); }
+.slide-section .section-num { font-size: 5rem; font-weight: 900; color: rgba(88,166,255,0.08); line-height: 1; margin-bottom: 8px; }
+.slide-section h2 { font-size: 2.6rem; font-weight: 800; }
+.slide-section h2 em { font-style: normal; color: #58a6ff; }
+.slide-section .desc { margin-top: 16px; color: #8b949e; font-size: 1rem; max-width: 500px; text-align: center; }
+
+/* Content slide */
+.slide-content { background: #0d1117; align-items: flex-start; }
+.slide-content .slide-title { font-size: 1.8rem; font-weight: 700; margin-bottom: 32px; }
+.slide-content .slide-title em { font-style: normal; color: #58a6ff; }
+
+/* Two-col */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; width: 100%; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; width: 100%; }
+
+/* Cards */
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 22px;
+}
+.card h3 { font-size: 0.95rem; color: #58a6ff; margin-bottom: 10px; }
+.card p, .card li { font-size: 0.88rem; color: #8b949e; line-height: 1.7; }
+.card ul { padding-left: 18px; }
+.card.highlight { border-color: #58a6ff; background: rgba(88,166,255,0.05); }
+
+/* Big stat */
+.stat-row { display: flex; gap: 20px; width: 100%; margin-bottom: 24px; }
+.stat-box {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 20px 24px;
+  flex: 1;
+  text-align: center;
+}
+.stat-box .num { font-size: 2.4rem; font-weight: 800; color: #58a6ff; }
+.stat-box .label { font-size: 0.78rem; color: #8b949e; margin-top: 4px; }
+
+/* Code block */
+pre {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 18px 22px;
+  font-size: 0.82rem;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  color: #e6edf3;
+  overflow-x: auto;
+  width: 100%;
+  line-height: 1.65;
+}
+pre .c { color: #8b949e; }
+pre .k { color: #ff7b72; }
+pre .s { color: #a5d6ff; }
+pre .n { color: #79c0ff; }
+pre .v { color: #ffa657; }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th { background: #161b22; color: #58a6ff; padding: 10px 16px; text-align: left; border-bottom: 1px solid #30363d; }
+td { padding: 10px 16px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+tr:last-child td { border-bottom: none; }
+
+/* Pipeline */
+.pipeline { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 16px 0; }
+.pip-step {
+  background: rgba(88,166,255,0.12);
+  border: 1px solid rgba(88,166,255,0.25);
+  color: #58a6ff;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.pip-arrow { color: #30363d; font-size: 1.1rem; padding: 0 2px; }
+
+/* Bar chart */
+.bar-row { margin-bottom: 14px; }
+.bar-label { display: flex; justify-content: space-between; font-size: 0.8rem; color: #8b949e; margin-bottom: 5px; }
+.bar-bg { background: #21262d; border-radius: 4px; height: 10px; }
+.bar-fill { height: 10px; border-radius: 4px; background: #58a6ff; transition: width 0.8s ease; }
+.bar-fill.green { background: #3fb950; }
+.bar-fill.orange { background: #d29922; }
+.bar-fill.red { background: #f85149; }
+
+/* Callout */
+.callout {
+  background: rgba(88,166,255,0.07);
+  border-left: 3px solid #58a6ff;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px;
+  font-size: 0.85rem;
+  color: #a0b4cc;
+  width: 100%;
+  margin-top: 16px;
+}
+.callout b { color: #58a6ff; }
+
+/* VS box */
+.vs-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; width: 100%; }
+.vs-label { text-align: center; font-size: 1.4rem; font-weight: 900; color: #f85149; }
+
+/* Emoji headline */
+.emoji-head { font-size: 3rem; margin-bottom: 12px; }
+
+/* full-width util */
+.w-full { width: 100%; }
+
+/* Result badge */
+.badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
+.badge.green { background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+.badge.blue { background: rgba(88,166,255,0.15); color: #58a6ff; border: 1px solid rgba(88,166,255,0.3); }
+.badge.red { background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+
+ul.check li { list-style: none; padding-left: 0; margin-bottom: 8px; color: #8b949e; font-size: 0.88rem; }
+ul.check li::before { content: "✓ "; color: #3fb950; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="slide-num" id="slide-num"></div>
+
+<div class="deck" id="deck">
+
+<!-- ─── 0. COVER ─────────────────────────────── -->
+<div class="slide slide-cover active">
+  <div class="eyebrow">Course 4</div>
+  <h1>LLM <span>指令微調</span><br>完整流程</h1>
+  <p class="subtitle">從 Tokenizer、資料設計，到 LoRA 訓練、評估與交付</p>
+  <div class="tags">
+    <span>Chat Template</span>
+    <span>SFT / LoRA / QLoRA</span>
+    <span>資料清洗</span>
+    <span>消融實驗</span>
+    <span>TinyLlama-1.1B</span>
+  </div>
+</div>
+
+<!-- ─── 1. 課程全覽 ───────────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">七個 Lab，一條完整的 <em>Fine-tuning 流水線</em></div>
+  <div class="pipeline" style="margin-bottom:28px;">
+    <div class="pip-step">Lab0 環境</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">Lab1 Chat Template</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">Lab2 Token 成本</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">Lab3 資料清洗</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">Lab4 LoRA 訓練</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">Lab5 評估</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">Lab6 消融+交付</div>
+  </div>
+  <table>
+    <tr><th>Lab</th><th>主題</th><th>核心產出</th></tr>
+    <tr><td>Lab 0</td><td>環境確認 & 第一次生成</td><td>GPU/套件就緒確認</td></tr>
+    <tr><td>Lab 1</td><td>Chat Template 轉換</td><td>格式化字串 + 一致性檢查</td></tr>
+    <tr><td>Lab 2</td><td>Tokenizer & 預算估算</td><td>多模型 token 比較</td></tr>
+    <tr><td>Lab 3</td><td>資料清洗 & SFT 資料集</td><td>train 450筆 / test 50筆</td></tr>
+    <tr><td>Lab 4</td><td>SFT + LoRA 微調</td><td>adapter 權重（5 checkpoints）</td></tr>
+    <tr><td>Lab 5</td><td>推理 & 批次評估</td><td>eval_results.json（平均 0.975）</td></tr>
+    <tr><td>Lab 6</td><td>消融實驗 & 交付打包</td><td>inference.py + README</td></tr>
+  </table>
+</div>
+
+<!-- ─── 2. Lab1 Section ──────────────────────── -->
+<div class="slide slide-section">
+  <div class="section-num">01</div>
+  <h2><em>Chat Template</em><br>為什麼模型不直接吃文字？</h2>
+  <div class="desc">Lab 1 — 訊息結構轉換與一致性檢查</div>
+</div>
+
+<!-- ─── 3. Lab1 內容 ──────────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">模型輸入不是純字串，而是 <em>有格式的 Token 序列</em></div>
+  <div class="two-col">
+    <div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3>你以為的輸入</h3>
+        <pre><span class="c"># 直接把文字丟進去？</span>
+text = <span class="s">"用戶：我要退款 助理："</span></pre>
+      </div>
+      <div class="card highlight">
+        <h3>模型實際吃的格式</h3>
+        <pre>&lt;|system|&gt;
+你是專業客服助理。&lt;|end|&gt;
+&lt;|user|&gt;
+我要退款&lt;|end|&gt;
+&lt;|assistant|&gt;</pre>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3>apply_chat_template 的兩種用法</h3>
+        <table>
+          <tr><th>情境</th><th>參數</th></tr>
+          <tr><td>訓練（完整對話）</td><td><code style="color:#ffa657">add_generation_prompt=False</code></td></tr>
+          <tr><td>推理（讓模型接著生）</td><td><code style="color:#3fb950">add_generation_prompt=True</code></td></tr>
+        </table>
+      </div>
+      <div class="callout">
+        <b>⚠️ 這個差異貫穿整門課</b><br>
+        搞錯 True/False，模型會在錯誤的地方停止或繼續生成。Lab6 的消融實驗就是為了量化這個錯誤有多嚴重。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 4. Lab2 Section ──────────────────────── -->
+<div class="slide slide-section">
+  <div class="section-num">02</div>
+  <h2><em>Token 成本</em><br>訓練前先算錢</h2>
+  <div class="desc">Lab 2 — Tokenizer 比較與訓練預算估算</div>
+</div>
+
+<!-- ─── 5. Lab2 內容 ──────────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">同樣的中文，不同模型 <em>Token 數差很多</em></div>
+  <div class="two-col">
+    <div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3>為什麼 Token 數很重要？</h3>
+        <ul>
+          <li style="color:#8b949e; font-size:0.88rem; margin-bottom:6px; list-style:disc; margin-left:18px;">訓練費用 = token 數 × 單價</li>
+          <li style="color:#8b949e; font-size:0.88rem; margin-bottom:6px; list-style:disc; margin-left:18px;">超過 context window → 截斷</li>
+          <li style="color:#8b949e; font-size:0.88rem; list-style:disc; margin-left:18px;">選模型時的重要參考指標</li>
+        </ul>
+      </div>
+      <div class="card highlight">
+        <h3>訓練預算公式</h3>
+        <pre>total_tokens =
+  筆數 × (prompt + response) × epochs
+
+train_hours =
+  total_tokens / tokens_per_sec / 3600</pre>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>Lab 2 做的事</h3>
+        <ul class="check">
+          <li>對同一段文字，跑多個模型的 Tokenizer</li>
+          <li>算 raw token（純文字）</li>
+          <li>算 chat token（套 template 後）</li>
+          <li>假設場景，呼叫估算函式</li>
+        </ul>
+      </div>
+      <div class="callout" style="margin-top:16px;">
+        <b>實務習慣：</b>訓練開始前，先用這個公式估成本。10,000 筆 × 500 tokens × 3 epochs ÷ 15,000 tok/s ≈ <b>1,000 秒</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 6. Lab3 Section ──────────────────────── -->
+<div class="slide slide-section">
+  <div class="section-num">03</div>
+  <h2><em>資料設計</em><br>垃圾進、垃圾出</h2>
+  <div class="desc">Lab 3 — 繁中客服 SFT 資料集建立</div>
+</div>
+
+<!-- ─── 7. Lab3 內容 ──────────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">一條可複述的 <em>資料清洗管線</em></div>
+  <div class="stat-row">
+    <div class="stat-box"><div class="num">500</div><div class="label">原始生成筆數</div></div>
+    <div class="stat-box"><div class="num">450</div><div class="label">train.json</div></div>
+    <div class="stat-box"><div class="num">50</div><div class="label">test.json</div></div>
+    <div class="stat-box"><div class="num">~20</div><div class="label">客服主題數</div></div>
+  </div>
+  <div class="pipeline" style="margin-bottom:24px;">
+    <div class="pip-step">模板生成對話</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">繁體化（OpenCC）</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">長度過濾</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">近似去重</div>
+    <div class="pip-arrow">→</div>
+    <div class="pip-step">train / test 切分</div>
+  </div>
+  <div class="card w-full">
+    <h3>SFT 資料標準格式</h3>
+    <pre>{
+  <span class="s">"id"</span>: <span class="s">"ex0001"</span>,
+  <span class="s">"topic"</span>: <span class="s">"退款"</span>,
+  <span class="s">"messages"</span>: [
+    { <span class="s">"role"</span>: <span class="s">"system"</span>,    <span class="s">"content"</span>: <span class="s">"你是專業客服助理..."</span> },
+    { <span class="s">"role"</span>: <span class="s">"user"</span>,      <span class="s">"content"</span>: <span class="s">"我要申請退款"</span> },
+    { <span class="s">"role"</span>: <span class="s">"assistant"</span>, <span class="s">"content"</span>: <span class="s">"您好，關於退款..."</span> }
+  ]
+}</pre>
+  </div>
+</div>
+
+<!-- ─── 8. Lab4 Section ──────────────────────── -->
+<div class="slide slide-section">
+  <div class="section-num">04</div>
+  <h2><em>LoRA / QLoRA</em><br>不改原始模型，只插旁邊</h2>
+  <div class="desc">Lab 4 — SFT + PEFT 指令微調</div>
+</div>
+
+<!-- ─── 9. Lab4 LoRA 原理 ────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">LoRA 的核心概念</div>
+  <div class="two-col">
+    <div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3>Full Fine-tuning（傳統）</h3>
+        <p>更新所有參數 → 顯存需求極大，難以分發</p>
+        <pre><span class="c"># 1.1B 模型 → 約 4.4 GB（fp32）</span>
+<span class="c"># 加上梯度 → 需要 13GB+ 顯存</span></pre>
+      </div>
+      <div class="card highlight">
+        <h3>LoRA（Low-Rank Adaptation）</h3>
+        <p>插入低秩矩陣 A、B，只訓練這兩個</p>
+        <pre>W' = W + <span class="v">α</span> × (B × A)
+<span class="c"># W 凍結，只更新 B 和 A</span>
+<span class="c"># rank=16 → 可訓練參數大幅減少</span></pre>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3>QLoRA = LoRA + 4-bit 量化</h3>
+        <ul class="check">
+          <li>Base model 以 4-bit（NF4）載入</li>
+          <li>計算用 bfloat16</li>
+          <li>同樣效果，顯存再省 50%+</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>本次訓練設定</h3>
+        <table>
+          <tr><td>rank (r)</td><td style="color:#58a6ff">16</td></tr>
+          <tr><td>alpha</td><td style="color:#58a6ff">32</td></tr>
+          <tr><td>Epochs</td><td style="color:#58a6ff">5</td></tr>
+          <tr><td>Adapter 大小</td><td style="color:#3fb950">幾 MB（vs 模型 2GB+）</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 10. Lab4 程式碼 ─────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">Lab4 關鍵程式碼</div>
+  <div class="two-col">
+    <pre><span class="c"># 1. 設定 LoRA</span>
+lora_cfg = <span class="n">LoraConfig</span>(
+    r=<span class="v">16</span>,
+    lora_alpha=<span class="v">32</span>,
+    lora_dropout=<span class="v">0.05</span>,
+    task_type=<span class="s">"CAUSAL_LM"</span>,
+    target_modules=[
+        <span class="s">"q_proj"</span>, <span class="s">"k_proj"</span>, <span class="s">"v_proj"</span>,
+        <span class="s">"o_proj"</span>, <span class="s">"gate_proj"</span>,
+        <span class="s">"up_proj"</span>, <span class="s">"down_proj"</span>,
+    ],
+)
+peft_model = <span class="n">get_peft_model</span>(base_model, lora_cfg)</pre>
+    <pre><span class="c"># 2. 訓練</span>
+trainer = <span class="n">SFTTrainer</span>(
+    model=peft_model,
+    train_dataset=ds_proc[<span class="s">"train"</span>],
+    processing_class=tokenizer,
+    args=<span class="n">SFTConfig</span>(
+        num_train_epochs=<span class="v">5</span>,
+        per_device_train_batch_size=<span class="v">2</span>,
+        gradient_accumulation_steps=<span class="v">4</span>,
+        learning_rate=<span class="v">1e-4</span>,
+        bf16=<span class="k">True</span>,
+    ),
+)
+trainer.train()
+trainer.save_model(<span class="s">"adapter"</span>)</pre>
+  </div>
+  <div class="callout">
+    <b>target_modules</b>：LoRA 插入的位置。涵蓋所有 attention 層（q/k/v/o_proj）和 FFN 層（gate/up/down_proj）可獲得最好效果。
+  </div>
+</div>
+
+<!-- ─── 11. Lab5 Section ──────────────────────── -->
+<div class="slide slide-section">
+  <div class="section-num">05</div>
+  <h2><em>推理 & 評估</em><br>模型學到了什麼？</h2>
+  <div class="desc">Lab 5 — 批次推理與 Offline 評估</div>
+</div>
+
+<!-- ─── 12. Lab5 推理 ─────────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">推理時的正確姿勢</div>
+  <div class="two-col">
+    <div>
+      <div class="card highlight" style="margin-bottom:16px;">
+        <h3>載入 Adapter</h3>
+        <pre>base = <span class="n">AutoModelForCausalLM</span>.from_pretrained(
+    BASE_MODEL_ID,
+    quantization_config=bnb_cfg,  <span class="c"># 4-bit</span>
+)
+model = <span class="n">PeftModel</span>.from_pretrained(
+    base, <span class="s">"adapter"</span>  <span class="c"># ← 掛上 LoRA</span>
+)
+model.eval()</pre>
+      </div>
+      <div class="card">
+        <h3>生成回覆</h3>
+        <pre>prompt = tokenizer.<span class="n">apply_chat_template</span>(
+    messages,
+    tokenize=<span class="k">False</span>,
+    add_generation_prompt=<span class="k">True</span>,  <span class="c"># 推理必須 True</span>
+)
+output = model.generate(
+    **inputs,
+    max_new_tokens=<span class="v">256</span>,
+    temperature=<span class="v">0.7</span>,
+)</pre>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>四條評估規則</h3>
+        <table>
+          <tr><th>規則</th><th>權重</th></tr>
+          <tr><td>禮貌用語</td><td>25%</td></tr>
+          <tr><td>結構化步驟</td><td>25%</td></tr>
+          <tr><td>中文比例 ≥ 50%</td><td>25%</td></tr>
+          <tr><td>包含主題關鍵字</td><td>25%</td></tr>
+        </table>
+      </div>
+      <div class="callout" style="margin-top:16px;">
+        <b>Offline 評估：</b>不需人工標記，規則快速打分，為日後改用 BLEU / ROUGE / LLM-as-judge 打基礎。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 13. Lab5 結果 ─────────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">評估結果 — 50 筆測試集</div>
+  <div class="stat-row">
+    <div class="stat-box"><div class="num" style="color:#3fb950">0.975</div><div class="label">平均分 / 1.0</div></div>
+    <div class="stat-box" style="border-color:#3fb950"><div class="num" style="color:#3fb950">45</div><div class="label">滿分（1.0）筆</div></div>
+    <div class="stat-box"><div class="num">5</div><div class="label">0.75 分筆</div></div>
+    <div class="stat-box" style="border-color:#3fb950"><div class="num" style="color:#3fb950">0</div><div class="label">0.5 分以下筆</div></div>
+  </div>
+  <div class="two-col">
+    <div>
+      <h3 style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">分數分佈</h3>
+      <div class="bar-row">
+        <div class="bar-label"><span>1.0 分（滿分）</span><span>90%</span></div>
+        <div class="bar-bg"><div class="bar-fill green" style="width:90%"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span>0.75 分</span><span>10%</span></div>
+        <div class="bar-bg"><div class="bar-fill orange" style="width:10%"></div></div>
+      </div>
+    </div>
+    <div>
+      <h3 style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">主要錯誤類型</h3>
+      <div class="bar-row">
+        <div class="bar-label"><span>主題相關性不足</span><span>5 筆</span></div>
+        <div class="bar-bg"><div class="bar-fill orange" style="width:10%"></div></div>
+      </div>
+      <div class="callout" style="margin-top:16px; font-size:0.8rem;">
+        修正推理 bug（誤帶 assistant 答案）＋加強訓練後，平均分從 <b style="color:#f85149">0.70</b> 大幅提升至 <b style="color:#3fb950">0.975</b>
+      </div>
+    </div>
+  </div>
+  <div class="callout">
+    90% 滿分，唯一剩餘弱點是少數筆次的主題關鍵字不夠精確。
+  </div>
+</div>
+
+<!-- ─── 14. Lab6 Section ──────────────────────── -->
+<div class="slide slide-section">
+  <div class="section-num">06</div>
+  <h2><em>消融實驗</em><br>用數字證明 Template 有多重要</h2>
+  <div class="desc">Lab 6 — 對照實驗與交付打包</div>
+</div>
+
+<!-- ─── 15. Lab6 消融 ─────────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">消融實驗設計與<em>實際結果</em></div>
+  <div class="vs-row" style="margin-bottom:20px;">
+    <div class="card highlight">
+      <h3>✅ 正確模板</h3>
+      <pre>messages = [m <span class="k">for</span> m <span class="k">in</span> messages
+           <span class="k">if</span> m[<span class="s">"role"</span>] != <span class="s">"assistant"</span>]
+prompt = tokenizer.<span class="n">apply_chat_template</span>(
+    messages, add_generation_prompt=<span class="k">True</span>
+)</pre>
+      <p style="margin-top:8px; color:#3fb950; font-size:0.82rem;">平均分：<b>1.00</b> — 5 筆全部滿分</p>
+    </div>
+    <div class="vs-label">VS</div>
+    <div class="card" style="border-color:#f85149">
+      <h3>❌ 錯誤模板</h3>
+      <pre>prompt = <span class="s">f"請用繁體中文回答：
+{user_text}
+回答："</span>
+<span class="c"># 完全不用 chat template</span></pre>
+      <p style="margin-top:8px; color:#f85149; font-size:0.82rem;">平均分：<b>0.90</b> — ex0102 輸出英文亂碼 (0.50)</p>
+    </div>
+  </div>
+  <div class="callout">
+    <b>工程紀錄：</b>初版實驗結果反常（錯誤模板更高分），排查發現測試資料的 <code>messages</code> 含 <code>assistant</code> 答案，導致模型看到答案只輸出結尾語句。修正後同步加強訓練（r: 16→32、epochs: 5→10），結果方向正確，驗證 <b>template 不一致確實影響輸出品質</b>。
+  </div>
+</div>
+
+<!-- ─── 16. Lab6 結果比較 ────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">消融實驗結果（50 筆）：<em>正確模板全面勝出</em></div>
+  <div class="stat-row" style="margin-bottom:20px;">
+    <div class="stat-box" style="border-color:#3fb950"><div class="num" style="color:#3fb950">0.975</div><div class="label">正確模板 平均分</div></div>
+    <div class="stat-box" style="border-color:#f85149"><div class="num" style="color:#f85149">0.945</div><div class="label">錯誤模板 平均分</div></div>
+    <div class="stat-box" style="border-color:#3fb950"><div class="num" style="color:#3fb950">5</div><div class="label">正確模板勝出筆數</div></div>
+    <div class="stat-box"><div class="num">45</div><div class="label">平手筆數</div></div>
+  </div>
+  <div class="two-col">
+    <div>
+      <h3 style="color:#8b949e; font-size:0.82rem; margin-bottom:10px;">分數分佈對比</h3>
+      <div class="bar-row">
+        <div class="bar-label"><span style="color:#3fb950">正確模板 1.0 分</span><span>45 筆 / 90%</span></div>
+        <div class="bar-bg"><div class="bar-fill green" style="width:90%"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span style="color:#3fb950">正確模板 0.75 分</span><span>5 筆 / 10%</span></div>
+        <div class="bar-bg"><div class="bar-fill orange" style="width:10%"></div></div>
+      </div>
+      <div class="bar-row" style="margin-top:8px;">
+        <div class="bar-label"><span style="color:#f85149">錯誤模板 1.0 分</span><span>40 筆 / 80%</span></div>
+        <div class="bar-bg"><div class="bar-fill" style="width:80%; background:#444"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span style="color:#f85149">錯誤模板 0.75 分</span><span>9 筆 / 18%</span></div>
+        <div class="bar-bg"><div class="bar-fill orange" style="width:18%; opacity:0.6"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span style="color:#f85149">錯誤模板 0.5 分</span><span>1 筆 / 2%</span></div>
+        <div class="bar-bg"><div class="bar-fill red" style="width:2%"></div></div>
+      </div>
+    </div>
+    <div class="card" style="border-color:#f85149">
+      <h3>錯誤模板崩潰案例（ex0102）</h3>
+      <p style="font-size:0.78rem; line-height:1.7; color:#f85149; margin-bottom:8px;">當初購買了貨品後，我們會通知您的轉帳代碼是否已過期...</p>
+      <p style="font-size:0.78rem; color:#f85149;"><b>assistant subject: ATM transcation expiration<br>to: customer</b></p>
+      <p style="font-size:0.75rem; color:#666; margin-top:8px;">← 混入英文 email 格式殘碼，得分 0.50</p>
+      <div style="border-top:1px solid #30363d; margin-top:10px; padding-top:10px;">
+        <p style="font-size:0.75rem; color:#3fb950;">正確模板同筆：顧客您好：感謝您聯繫我們關於ATM轉帳期限... 1. 2. 3. ✅ 得分 1.00</p>
+      </div>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:14px;">
+    <b>結論：</b>正確模板 50 筆無一失敗（最低 0.75），錯誤模板有 10 筆低於滿分，其中 1 筆格式完全崩潰。<b>template 一致性是推理穩定性的關鍵保障。</b>
+  </div>
+</div>
+
+<!-- ─── 17. 核心觀念總結 ──────────────────────── -->
+<div class="slide slide-content">
+  <div class="slide-title">六個帶走的 <em>核心觀念</em></div>
+  <div class="three-col">
+    <div class="card">
+      <h3>🔑 Chat Template 一致性</h3>
+      <p>訓練和推理必須用相同 template。<code>add_generation_prompt</code> 一字之差，輸出天差地遠。</p>
+    </div>
+    <div class="card">
+      <h3>🔑 LoRA / QLoRA</h3>
+      <p>不改原始權重，插入低秩矩陣。Adapter 幾 MB，4-bit 量化省顯存，是現在 fine-tuning 的標準做法。</p>
+    </div>
+    <div class="card">
+      <h3>🔑 SFT 資料格式</h3>
+      <p>每筆資料是 messages 列表（role + content）。資料品質比資料量更重要。</p>
+    </div>
+    <div class="card">
+      <h3>🔑 Offline 評估</h3>
+      <p>用規則或 LLM-as-judge 自動打分。不需人工標記就能快速迭代，再逐步升級為 BLEU / ROUGE。</p>
+    </div>
+    <div class="card">
+      <h3>🔑 消融實驗</h3>
+      <p>隔離單一變數，量化它的影響。是工程決策驗證的最直接方式。</p>
+    </div>
+    <div class="card">
+      <h3>🔑 Token 成本意識</h3>
+      <p>同樣的文字，不同 tokenizer 的 token 數可差 2~3 倍。訓練前先估算成本是基本工。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 17. END ───────────────────────────────── -->
+<div class="slide slide-cover" style="background: radial-gradient(ellipse at 70% 50%, #1a2744 0%, #0d1117 70%);">
+  <div class="emoji-head">🎉</div>
+  <h1 style="font-size:2.6rem;">All Labs <span>Complete</span></h1>
+  <div class="stat-row" style="margin-top:36px; max-width:600px;">
+    <div class="stat-box"><div class="num">7</div><div class="label">Labs 完成</div></div>
+    <div class="stat-box"><div class="num">450</div><div class="label">訓練資料筆數</div></div>
+    <div class="stat-box"><div class="num" style="color:#3fb950">0.975</div><div class="label">評估平均分</div></div>
+  </div>
+  <p class="subtitle" style="margin-top:24px;">TinyLlama-1.1B × LoRA × 繁中客服 SFT</p>
+</div>
+
+</div><!-- /deck -->
+
+<!-- Navigation -->
+<div class="nav">
+  <button id="btn-prev" onclick="go(-1)">←</button>
+  <span id="slide-counter"></span>
+  <button id="btn-next" onclick="go(1)">→</button>
+</div>
+<div class="hint">← → 或 空白鍵 切換</div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const total = slides.length;
+let cur = 0;
+
+function show(n) {
+  slides[cur].classList.remove('active');
+  cur = (n + total) % total;
+  slides[cur].classList.add('active');
+  document.getElementById('slide-counter').textContent = `${cur + 1} / ${total}`;
+  document.getElementById('slide-num').textContent = `${cur + 1} / ${total}`;
+  document.getElementById('progress').style.width = `${((cur + 1) / total) * 100}%`;
+}
+
+function go(d) { show(cur + d); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); go(1); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); go(-1); }
+});
+
+// Touch swipe
+let tx = 0;
+document.addEventListener('touchstart', e => tx = e.touches[0].clientX);
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - tx;
+  if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+});
+
+show(0);
+</script>
+</body>
+</html>

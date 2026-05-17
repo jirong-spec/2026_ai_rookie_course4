@@ -1,6 +1,7 @@
 services:
   vllm_lab3:
-    image: vllm/vllm-openai:v0.12.0
+    #image: vllm/vllm-openai:v0.12.0
+    image: vllm/vllm-openai:v0.8.5
     deploy:
       resources:
         reservations:

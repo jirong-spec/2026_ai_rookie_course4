@@ -3,10 +3,12 @@ name = "ai-rookie-course4"
 version = "0.1.0"
 description = "LLM 訓練與資料基礎：課程實作（Lab0–Lab6）"
 readme = "readme.md"
-requires-python = ">=3.10"
+requires-python = "==3.12.*"
 dependencies = [
-    "torch>=2.2",
-    "transformers==5.3.0",
+    "torch==2.6.0",
+    "torchvision==0.21.0",
+    "torchaudio==2.6.0",
+    "transformers>=4.51,<5",
     "accelerate==1.13.0",
     "bitsandbytes==0.49.2",
     "datasets==4.8.3",

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM 指令微調課程筆記 — Course 4</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: #f5f6fa;
+    color: #2d2d2d;
+    line-height: 1.75;
+    padding: 40px 20px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: white;
+    border-radius: 16px;
+    padding: 48px 40px;
+    margin-bottom: 36px;
+  }
+  .header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+  .header .subtitle { font-size: 1rem; opacity: 0.75; }
+  .header .meta { margin-top: 20px; font-size: 0.85rem; opacity: 0.6; }
+
+  /* Section titles */
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0f3460;
+    margin: 36px 0 16px;
+    padding-left: 12px;
+    border-left: 4px solid #0f3460;
+  }
+  h3 { font-size: 1rem; font-weight: 700; color: #333; margin: 16px 0 8px; }
+
+  /* Cards */
+  .card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+
+  /* Lab cards */
+  .lab-card {
+    background: white;
+    border-radius: 12px;
+    padding: 0;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .lab-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 24px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .lab-badge {
+    background: #0f3460;
+    color: white;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .lab-badge.done { background: #27ae60; }
+  .lab-title { font-weight: 700; font-size: 1.05rem; }
+  .lab-tag {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: #888;
+    background: #f4f4f4;
+    padding: 3px 10px;
+    border-radius: 10px;
+  }
+  .lab-body { padding: 18px 24px; }
+  .lab-body p { color: #444; margin-bottom: 10px; font-size: 0.93rem; }
+  .highlight-box {
+    background: #eef4ff;
+    border-left: 3px solid #0f3460;
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.88rem;
+    color: #1a3a6e;
+    margin-top: 10px;
+  }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .stat-box {
+    background: white;
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+  .stat-box .num {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #0f3460;
+    line-height: 1.1;
+  }
+  .stat-box .label { font-size: 0.78rem; color: #888; margin-top: 4px; }
+
+  /* Score bar */
+  .score-row { margin-bottom: 12px; }
+  .score-label { font-size: 0.85rem; color: #555; margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .bar-bg { background: #eee; border-radius: 6px; height: 10px; }
+  .bar-fill { height: 10px; border-radius: 6px; background: #0f3460; }
+  .bar-fill.red { background: #e74c3c; }
+  .bar-fill.orange { background: #e67e22; }
+  .bar-fill.green { background: #27ae60; }
+
+  /* Error distribution */
+  .error-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: 0.88rem;
+  }
+  .error-label { width: 160px; color: #555; flex-shrink: 0; }
+  .error-bar-bg { flex: 1; background: #eee; border-radius: 6px; height: 10px; }
+  .error-bar-fill { height: 10px; border-radius: 6px; background: #e74c3c; }
+  .error-count { width: 50px; text-align: right; color: #888; }
+
+  /* Pipeline */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin: 16px 0;
+  }
+  .pipeline-step {
+    background: #0f3460;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pipeline-arrow {
+    color: #aaa;
+    font-size: 1.2rem;
+    padding: 0 6px;
+  }
+
+  /* Code block */
+  pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 16px 20px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    overflow-x: auto;
+    margin: 10px 0;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+  }
+
+  /* Key concepts */
+  .concept-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 600px) { .concept-grid { grid-template-columns: 1fr; } }
+  .concept-card {
+    background: #f8f9ff;
+    border: 1px solid #dde4ff;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .concept-card h4 { font-size: 0.9rem; color: #0f3460; margin-bottom: 6px; }
+  .concept-card p { font-size: 0.82rem; color: #555; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th { background: #0f3460; color: white; padding: 10px 14px; text-align: left; }
+  td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #f9f9f9; }
+  .status-done { color: #27ae60; font-weight: 700; }
+
+  footer { text-align: center; color: #aaa; font-size: 0.78rem; margin-top: 48px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="subtitle">Course 4 學習筆記</div>
+    <h1>LLM 指令微調（SFT）完整流程</h1>
+    <p style="opacity:0.7; margin-top:10px; font-size:0.9rem;">
+      Tokenizer · Chat Template · 資料清洗 · LoRA/QLoRA 微調 · 推理評估 · 消融實驗
+    </p>
+    <div class="meta">日期：2026-05-16　／　模型：TinyLlama-1.1B-Chat-v1.0　／　Lab0 ~ Lab6</div>
+  </div>
+
+  <!-- 課程目標 -->
+  <h2>課程目標</h2>
+  <div class="card">
+    <p>本課程以一條龍的方式走完 LLM Fine-tuning 的工程流程，從最底層的 Tokenizer 認識，到實際訓練 LoRA adapter、推理評估、最後包成可交付的腳本。</p>
+    <div class="pipeline" style="margin-top:16px;">
+      <div class="pipeline-step">資料設計</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">格式轉換</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">LoRA 訓練</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">批次推理</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">消融實驗</div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipeline-step">交付打包</div>
+    </div>
+  </div>
+
+  <!-- Lab 說明 -->
+  <h2>各 Lab 紀錄</h2>
+
+  <!-- Lab0 -->
+  <div class="lab-card">
+    <div class="lab-header">
+      <span class="lab-badge done">Lab 0</span>
+      <span class="lab-title">環境確認與第一次生成</span>
+      <span class="lab-tag">完成 ✓</span>
+    </div>
+    <div class="lab-body">
+      <p>載入預訓練因果語言模型，用 Chat Template 組 prompt，跑一次 <code>generate</code>，確認 GPU、套件、HuggingFace 連線都正常。也是認識 <code>uv</code> 環境管理工具的起點。</p>
+      <div class="highlight-box">💡 重點：<code>uv run</code> 取代 <code>source .venv/bin/activate</code>，依賴統一宣告在 <code>pyproject.toml</code>，環境可重現。</div>
+    </div>
+  </div>
+
+  <!-- Lab1 -->
+  <div class="lab-card">
+    <div class="lab-header">
+      <span class="lab-badge done">Lab 1</span>
+      <span class="lab-title">Chat Template 與訊息結構檢查</span>
+      <span class="lab-tag">完成 ✓</span>
+    </div>
+    <div class="lab-body">
+      <p>把 JSON 格式的對話（<code>role</code> + <code>content</code>）餵進 <code>tokenizer.apply_chat_template</code>，轉成模型實際接收的字串（含 special tokens、角色標記）。並實作一致性檢查，驗證 system 存在、role 順序正確、content 不為空。</p>
+      <div class="highlight-box">
+        💡 最重要的區別：<br>
+        訓練用 <code>add_generation_prompt=<b>False</b></code>（完整對話，含 assistant 回覆）<br>
+        推理用 <code>add_generation_prompt=<b>True</b></code>（讓模型接著生成）<br>
+        搞錯這個，模型表現會大幅下降 — 這就是 Lab6 消融實驗要驗證的事。
+      </div>
+    </div>
+  </div>
+
+  <!-- Lab2 -->
+  <div class="lab-card">
+    <div class="lab-header">
+      <span class="lab-badge done">Lab 2</span>
+      <span class="lab-title">Tokenizer 比較與訓練預算估算</span>
+      <span class="lab-tag">完成 ✓</span>
+    </div>
+    <div class="lab-body">
+      <p>對同一段文字，用多個模型的 Tokenizer 分別計算 raw token 數與套 Chat Template 後的 token 數。並實作訓練預算估算器：</p>
+      <pre>total_tokens = 筆數 × (avg_prompt_tokens + avg_resp_tokens) × epochs
+train_hours  = total_tokens / tokens_per_sec / 3600</pre>
+      <div class="highlight-box">💡 同樣的中文，不同模型的 token 數可以差 2~3 倍。訓練前先估算成本，是工程實務的基本習慣。</div>
+    </div>
+  </div>
+
+  <!-- Lab3 -->
+  <div class="lab-card">
+    <div class="lab-header">
+      <span class="lab-badge done">Lab 3</span>
+      <span class="lab-title">資料清洗與 SFT 資料集建立</span>
+      <span class="lab-tag">完成 ✓</span>
+    </div>
+    <div class="lab-body">
+      <p>用模板自動生成繁體中文客服對話，套用固定助理回覆格式，執行清洗管線，最後切成訓練／測試集。</p>
+      <h3>資料統計</h3>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="num">500</div><div class="label">原始生成筆數</div></div>
+        <div class="stat-box"><div class="num">450</div><div class="label">train.json</div></div>
+        <div class="stat-box"><div class="num">50</div><div class="label">test.json</div></div>
+        <div class="stat-box"><div class="num">~20</div><div class="label">涵蓋主題數</div></div>
+      </div>
+      <h3>清洗管線</h3>
+      <div class="pipeline">
+        <div class="pipeline-step" style="font-size:0.75rem; padding:6px 12px;">繁體化</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step" style="font-size:0.75rem; padding:6px 12px;">正規化</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step" style="font-size:0.75rem; padding:6px 12px;">長度過濾</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step" style="font-size:0.75rem; padding:6px 12px;">近似去重</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-step" style="font-size:0.75rem; padding:6px 12px;">train/test 切分</div>
+      </div>
+      <div class="highlight-box">💡 SFT 資料標準格式：每筆為 <code>{"id", "messages", "topic", "language"}</code>，messages 是 role+content 的列表。資料品質比資料量更重要。</div>
+    </div>
+  </div>
+
+  <!-- Lab4 -->
+  <div class="lab-card">
+    <div class="lab-header">
+      <span class="lab-badge done">Lab 4</span>
+      <span class="lab-title">指令微調（SFT + LoRA）</span>
+      <span class="lab-tag">完成 ✓</span>
+    </div>
+    <div class="lab-body">
+      <p>拿 Lab3 的訓練資料，用 TRL 的 <code>SFTTrainer</code> 搭配 PEFT 的 LoRA，對 TinyLlama-1.1B 做指令微調。</p>
+      <h3>訓練設定</h3>
+      <table>
+        <tr><th>參數</th><th>值</th></tr>
+        <tr><td>Base Model</td><td>TinyLlama/TinyLlama-1.1B-Chat-v1.0</td></tr>
+        <tr><td>LoRA rank (r)</td><td>16</td></tr>
+        <tr><td>LoRA alpha</td><td>32</td></tr>
+        <tr><td>LoRA dropout</td><td>0.05</td></tr>
+        <tr><td>Target modules</td><td>q/k/v/o_proj, gate/up/down_proj（全部注意力+FFN）</td></tr>
+        <tr><td>Epochs</td><td>5</td></tr>
+        <tr><td>Batch size</td><td>2（gradient accumulation steps = 4）</td></tr>
+        <tr><td>Learning rate</td><td>1e-4</td></tr>
+        <tr><td>精度</td><td>bfloat16 + 4-bit QLoRA</td></tr>
+        <tr><td>Max length</td><td>2048 tokens</td></tr>
+        <tr><td>Checkpoints 數</td><td>5（每 epoch 存一次）</td></tr>
+      </table>
+      <div class="highlight-box">
+        💡 LoRA 的核心概念：不修改原始模型權重，只在旁邊插入低秩矩陣 (rank=16)。Adapter 只有幾 MB，可獨立分發、換裝到不同 base model。<br><br>
+        QLoRA = 4-bit 量化載入 base model（省顯存）+ bfloat16 精度做計算。
+      </div>
+    </div>
+  </div>
+
+  <!-- Lab5 -->
+  <div class="lab-card">
+    <div class="lab-header">
+      <span class="lab-badge done">Lab 5</span>
+      <span class="lab-title">推理與批次評估</span>
+      <span class="lab-tag">完成 ✓</span>
+    </div>
+    <div class="lab-body">
+      <p>載入 base model + LoRA adapter，對 test set 50 筆逐一用正確 chat template 推理，用四條規則打分，輸出 <code>eval_results.json</code>。</p>
+
+      <h3>評估規則（各佔 25 分）</h3>
+      <table>
+        <tr><th>規則</th><th>判斷方式</th></tr>
+        <tr><td>禮貌用語</td><td>含「您好」「請」「感謝」「謝謝」「麻煩您」其一</td></tr>
+        <tr><td>結構化步驟</td><td>含「1.」「2.」「步驟」「首先」「接著」「最後」其一</td></tr>
+        <tr><td>中文比例</td><td>CJK 字元佔非空白字元 ≥ 50%</td></tr>
+        <tr><td>主題相關</td><td>回覆中包含 topic 關鍵字</td></tr>
+      </table>
+
+      <h3 style="margin-top:20px;">評估結果（50 筆）</h3>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="num">0.975</div><div class="label">平均分數 / 1.0</div></div>
+        <div class="stat-box"><div class="num">45</div><div class="label">滿分（1.0）筆數</div></div>
+        <div class="stat-box"><div class="num">5</div><div class="label">0.75 分筆數</div></div>
+        <div class="stat-box"><div class="num">0</div><div class="label">0.5 分以下筆數</div></div>
+      </div>
+
+      <h3>分數分佈</h3>
+      <div class="score-row">
+        <div class="score-label"><span>1.0 分（滿分）</span><span>45 筆 / 90%</span></div>
+        <div class="bar-bg"><div class="bar-fill green" style="width:90%"></div></div>
+      </div>
+      <div class="score-row">
+        <div class="score-label"><span>0.75 分</span><span>5 筆 / 10%</span></div>
+        <div class="bar-bg"><div class="bar-fill orange" style="width:10%"></div></div>
+      </div>
+
+      <h3 style="margin-top:16px;">主要錯誤類型</h3>
+      <div class="error-row">
+        <span class="error-label">主題相關性不足</span>
+        <div class="error-bar-bg"><div class="error-bar-fill" style="width:10%"></div></div>
+        <span class="error-count">5 筆</span>
+      </div>
+
+      <div class="highlight-box" style="margin-top:16px;">
+        💡 修正推理時誤帶 assistant 答案的 bug，並加強訓練（r: 16→32、epochs: 5→10）後，平均分從 0.70 大幅提升至 <b>0.975</b>。90% 的測試樣本達到滿分，唯一剩餘弱點是少數筆次的主題關鍵字不夠精確。
+      </div>
+    </div>
+  </div>
+
+  <!-- Lab6 -->
+  <div class="lab-card">
+    <div class="lab-header">
+      <span class="lab-badge done">Lab 6</span>
+      <span class="lab-title">消融實驗與交付打包</span>
+      <span class="lab-tag">完成 ✓</span>
+    </div>
+    <div class="lab-body">
+      <p>對同一批測試資料，跑兩種推理方式比較分數差距，並產出可交付的推理腳本與說明文件。</p>
+
+      <h3>消融實驗設計</h3>
+      <table>
+        <tr><th></th><th>正確模板</th><th>錯誤模板</th></tr>
+        <tr><td>做法</td><td><code>apply_chat_template(..., add_generation_prompt=True)</code></td><td>直接拼字串：<code>請用繁體中文回答：\n{user}\n回答：</code></td></tr>
+        <tr><td>實驗結果（50筆平均）</td><td style="color:#27ae60; font-weight:700;">0.975</td><td style="color:#e74c3c; font-weight:700;">0.945</td></tr>
+        <tr><td>目的</td><td colspan="2">量化「訓練/推理 template 不一致」的代價</td></tr>
+      </table>
+
+      <h3 style="margin-top:16px;">實驗結果（50 筆全測試集）</h3>
+      <table>
+        <tr><th></th><th>正確模板</th><th>錯誤模板</th><th>差異</th></tr>
+        <tr><td>平均分</td><td style="color:#27ae60; font-weight:700;">0.975</td><td style="color:#e74c3c; font-weight:700;">0.945</td><td style="color:#27ae60; font-weight:700;">+0.030</td></tr>
+        <tr><td>滿分（1.0）</td><td style="color:#27ae60">45 筆（90%）</td><td>40 筆（80%）</td><td>+5 筆</td></tr>
+        <tr><td>0.75 分</td><td>5 筆（10%）</td><td>9 筆（18%）</td><td>—</td></tr>
+        <tr><td>0.5 分以下</td><td style="color:#27ae60">0 筆</td><td style="color:#e74c3c">1 筆（英文亂碼崩潰）</td><td>—</td></tr>
+        <tr><td>勝負統計</td><td colspan="3">正確模板勝 5 筆，平手 45 筆，正確模板負 0 筆</td></tr>
+      </table>
+
+      <h3 style="margin-top:16px;">結論</h3>
+      <p style="color:#555; font-size:0.88rem;">正確 chat template 平均 0.975，錯誤模板 0.945。錯誤模板在 ex0102 完全格式崩潰（混入英文 email 殘碼，得分 0.50），正確模板 50 筆無一低於 0.75，驗證「template 不一致導致輸出不穩定」的核心論點。</p>
+
+      <h3 style="margin-top:16px;">交付物</h3>
+      <table>
+        <tr><th>檔案</th><th>說明</th></tr>
+        <tr><td><code>workdir/inference.py</code></td><td>CLI 推理腳本，支援 <code>--model_id</code>、<code>--adapter_dir</code>、<code>--system</code>、<code>--user</code></td></tr>
+        <tr><td><code>workdir/README_delivery.txt</code></td><td>環境安裝、執行指令、注意事項</td></tr>
+      </table>
+
+      <div class="highlight-box">💡 消融實驗的用途：隔離單一變數，量化它的影響。這是 ML 工程中很重要的思維——不要靠直覺，要靠數字說話。</div>
+    </div>
+  </div>
+
+  <!-- 核心觀念 -->
+  <h2>核心觀念整理</h2>
+  <div class="concept-grid">
+    <div class="concept-card">
+      <h4>🔑 Chat Template 一致性</h4>
+      <p>訓練和推理必須用完全相同的 template。<code>add_generation_prompt</code> 的 True/False 差一個字，模型行為天差地遠。</p>
+    </div>
+    <div class="concept-card">
+      <h4>🔑 LoRA / QLoRA</h4>
+      <p>不改原始權重，插入低秩矩陣。Adapter 只有幾 MB，4-bit 量化大幅降低顯存需求，是現在 fine-tuning 的標準做法。</p>
+    </div>
+    <div class="concept-card">
+      <h4>🔑 SFT 資料格式</h4>
+      <p>每筆資料是 messages 列表（role + content），訓練時完整對話都要餵進去，讓模型學會「給什麼問題，回什麼格式」。</p>
+    </div>
+    <div class="concept-card">
+      <h4>🔑 Offline 評估</h4>
+      <p>用規則或 LLM-as-judge 自動打分，不需人工標記就能快速迭代。本次用四條規則，未來可升級為 BLEU / ROUGE。</p>
+    </div>
+    <div class="concept-card">
+      <h4>🔑 消融實驗</h4>
+      <p>每次只改一個變數，用數字量化它的影響。是驗證工程決策是否有效的最直接方式。</p>
+    </div>
+    <div class="concept-card">
+      <h4>🔑 Token 成本意識</h4>
+      <p>同樣的文字，不同 tokenizer 切出的 token 數差很多。訓練前先估算 token 數和時間，是工程實務的基本功。</p>
+    </div>
+  </div>
+
+  <!-- 完成度 -->
+  <h2>完成度總覽</h2>
+  <div class="card">
+    <table>
+      <tr><th>Lab</th><th>主題</th><th>狀態</th><th>產出物</th></tr>
+      <tr><td>Lab 0</td><td>環境確認</td><td class="status-done">✓ 完成</td><td>—</td></tr>
+      <tr><td>Lab 1</td><td>Chat Template</td><td class="status-done">✓ 完成</td><td>格式化字串 + 一致性檢查</td></tr>
+      <tr><td>Lab 2</td><td>Tokenizer & 預算估算</td><td class="status-done">✓ 完成</td><td>多模型 token 比較報告</td></tr>
+      <tr><td>Lab 3</td><td>資料清洗 & 資料集</td><td class="status-done">✓ 完成</td><td>train.json（450筆）+ test.json（50筆）</td></tr>
+      <tr><td>Lab 4</td><td>LoRA 微調訓練</td><td class="status-done">✓ 完成</td><td>adapter/ 權重（5 checkpoints）</td></tr>
+      <tr><td>Lab 5</td><td>推理與批次評估</td><td class="status-done">✓ 完成</td><td>eval_results.json（平均 0.975 分）</td></tr>
+      <tr><td>Lab 6</td><td>消融實驗 & 交付</td><td class="status-done">✓ 完成</td><td>inference.py + README_delivery.txt</td></tr>
+    </table>
+  </div>
+
+  <footer>Course 4 — LLM 訓練與資料基礎 &nbsp;·&nbsp; 2026-05-16</footer>
+</div>
+</body>
+</html>

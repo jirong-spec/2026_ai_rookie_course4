@@ -6,30 +6,44 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig, AutoTokenizer
 from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer, SFTConfig
 import torch
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+TRAIN_PATH = BASE_DIR / "lab3" / "train.json"
+TEST_PATH = BASE_DIR / "lab3" / "test.json"
 
 BASE_MODEL_ID = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 
 def formatting_samples(example, tokenizer):
     """
     將一筆 example["messages"] 轉成一段訓練用文字。
-    這裡簡化：整段對話都拿來做 LM 訓練。
     """
-    # TODO 1: 使用 tokenizer.apply_chat_template，tokenize=False, add_generation_prompt=False
-    text = tokenizer.apply_chat_template(example["messages"], tokenize=False, add_generation_prompt=False)
-    input_ids = tokenizer(text)
-    return input_ids
+    text = tokenizer.apply_chat_template(
+        example["messages"],
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    return {"text": text}
 
     # return {"input_ids": ..., "attention_mask": ..., "labels": ...}
 
+
+
 def main():
     # TODO 2: 載入 Lab3 產生的 train / val JSONL
+
+    
     ds = DatasetDict(
         {
-            "train": load_dataset("json", data_files="../lab3/train.json")["train"],
+            "train": load_dataset("json", data_files=str(TRAIN_PATH))["train"],
+            "test": load_dataset("json", data_files=str(TEST_PATH))["train"],
         }
     )
 
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, use_fast=True)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     # TODO 3: 對資料集做 map，轉成 {"text": "..."} 格式
     ds_proc = ds.map(
@@ -48,13 +62,19 @@ def main():
 
     # TODO 5: 設定 LoRA 參數（r, alpha, dropout, target_modules）
     lora_cfg = LoraConfig(
-        r=16,
-        lora_alpha=32,
+        r=32,
+        lora_alpha=64,
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
         target_modules=[
-            # 視模型結構填入 q_proj, k_proj, v_proj ... 等，或是全部: "all-linear"
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
         ],
     )
     peft_model = get_peft_model(base_model, lora_cfg)
@@ -62,24 +82,27 @@ def main():
     # TODO 6: 建立 num_train_epochs, batch_size等）
     sft_cfg = SFTConfig(
         output_dir="adapter",
-        num_train_epochs=5,
+        num_train_epochs=10,
         per_device_train_batch_size=2,
         gradient_accumulation_steps=4,
         logging_steps=4,
         save_strategy="epoch",
-        learning_rate=1e-4,
+        learning_rate=2e-4,
         warmup_ratio=0.05,
-        max_length=2048,
+        max_length=1024,
         bf16=True,
         report_to=[],
+        dataset_text_field="text",
     )
 
     # TODO 7: 建立 SFTTrainer 並呼叫 train()
     trainer = SFTTrainer(
         model=peft_model,
         train_dataset=ds_proc["train"],
+        processing_class=tokenizer,
         args=sft_cfg,
     )
+
 
     trainer.train()
 
